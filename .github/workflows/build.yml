@@ -3,21 +3,17 @@ name: Build APK
 on: 
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
       
@@ -29,81 +25,53 @@ jobs:
             libssl-dev \
             libffi-dev \
             python3-dev \
+            git \
+            wget \
+            autoconf \
+            libtool \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
-            libncursesw5-dev \
-            libtinfo5 \
-            libx11-dev \
-            libxext-dev \
-            libxrender-dev \
-            git \
-            wget \
-            ccache \
-            autoconf \
-            libtool
+            libncursesw5-dev
       
-      - name: Install Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
       
       - name: Install Python build tools
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install --upgrade buildozer cython
-          pip install yt-dlp requests pillow plyer
-      
-      - name: Setup Android environment
-        run: |
-          mkdir -p ~/.android
-          echo "sdk.dir=$HOME/Android/Sdk" > ~/.android/local.properties
-          export ANDROID_SDK_ROOT=$HOME/Android/Sdk
-          export ANDROID_HOME=$HOME/Android/Sdk
+          python -m pip install --upgrade pip wheel setuptools
+          pip install buildozer cython
       
       - name: Cache buildozer
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-${{ runner.os }}-
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-
       
       - name: Cache gradle
         uses: actions/cache@v4
         with:
           path: ~/.gradle
           key: gradle-${{ runner.os }}
-          restore-keys: gradle-${{ runner.os }}-
+          restore-keys: gradle-
       
-      - name: Display buildozer version
-        run: buildozer --version
-      
-      - name: Build APK with verbose output
+      - name: Build APK
         run: |
-          set -e
-          echo "Starting APK build..."
-          buildozer android debug 2>&1 || {
-            echo "Build failed with exit code $?"
-            echo "=== Checking log files ==="
-            find ~/.buildozer -name "*.log" -type f -exec echo "--- {} ---" \; -exec tail -30 {} \;
-            exit 1
-          }
+          buildozer android debug
       
-      - name: Check for APK file
-        run: |
-          echo "=== Looking for APK ==="
-          find . -name "*.apk" -type f -ls
-          if [ -d "bin" ]; then
-            ls -lah bin/
-          else
-            echo "bin/ directory does not exist"
-          fi
-      
-      - name: Upload APK if built
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: youtube-observe-apk
           path: bin/*.apk
           retention-days: 30
+      
+      - name: Show build log if failed
+        if: failure()
+        run: |
+          echo "=== Build Failed ==="
+          find ~/.buildozer -name "*.log" -type f -exec tail -100 {} \;
