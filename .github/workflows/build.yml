@@ -7,20 +7,31 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    container: buildozer/buildozer:latest
-    timeout-minutes: 180
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Build APK
+      - name: Build with Kivy Docker
+        uses: docker://kivy/kivy:latest
+        with:
+          args: bash -c "apt-get update && apt-get install -y buildozer cython && buildozer android debug"
+      
+      - name: Check for APK
         run: |
-          buildozer android debug
+          ls -lah bin/
+          find . -name "*.apk" -type f
       
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: apk
+          name: youtube-observe-apk
           path: bin/*.apk
           retention-days: 30
+      
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-output
+          path: .buildozer/
+          retention-days: 7
