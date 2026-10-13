@@ -5,10 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     
     steps:
       - name: Checkout code
@@ -34,12 +36,29 @@ jobs:
             libtinfo5 \
             libx11-dev \
             libxext-dev \
-            libxrender-dev
+            libxrender-dev \
+            git \
+            wget \
+            ccache \
+            autoconf \
+            libtool
       
-      - name: Install Python dependencies
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Install Python build tools
         run: |
           python -m pip install --upgrade pip wheel setuptools
           pip install buildozer cython
+          pip install yt-dlp requests pillow plyer
+      
+      - name: Setup Android SDK
+        run: |
+          mkdir -p ~/.android
+          echo "sdk.dir=$HOME/Android/Sdk" > ~/.android/local.properties
       
       - name: Cache buildozer
         uses: actions/cache@v4
@@ -49,11 +68,28 @@ jobs:
           restore-keys: |
             buildozer-${{ runner.os }}-
       
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ runner.os }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+      
       - name: Build APK
         run: |
-          buildozer android debug 2>&1
+          buildozer android debug 2>&1 | tee build.log
+          echo "Build log:"
+          tail -50 build.log
       
-      - name: Upload APK to artifacts
+      - name: List build outputs
+        if: always()
+        run: |
+          echo "=== Checking for APK files ==="
+          find . -name "*.apk" -type f
+          ls -lah bin/ 2>/dev/null || echo "bin/ directory not found"
+      
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -63,11 +99,9 @@ jobs:
           if-no-files-found: warn
       
       - name: Upload build logs
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
-          path: |
-            .buildozer/android/platform/build-*/build/outputs/
-            .buildozer/android/platform/build-*/build/intermediates/
+          name: build-logs-${{ github.run_id }}
+          path: build.log
           retention-days: 7
